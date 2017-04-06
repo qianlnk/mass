@@ -57,7 +57,7 @@ func StartFactory(redisHost string, redisDB int, redisMaxIdle int, redisMaxActiv
 
 	factory = &Factory{
 		products:       make(map[string]Product),
-		processingPool: make(chan ProcessingPool, 10),
+		processingPool: make(chan ProcessingPool),
 		maxPool:        50,
 		importPool:     rp,
 	}
@@ -78,6 +78,7 @@ func (f *Factory) processing() {
 		fmt.Println("===", l, err)
 		if l {
 			psc.Unsubscribe(pool.productName)
+			psc.Receive()
 			//psc.Close()
 			pd := pool.method(pool.materials...)
 			fmt.Println("^^^", pd)
@@ -88,6 +89,7 @@ func (f *Factory) processing() {
 			}
 			delete(f.products, pool.productName)
 			f.mu.Unlock()
+			fmt.Println("end ***")
 		} else {
 			for {
 				switch n := psc.Receive().(type) {
@@ -99,8 +101,10 @@ func (f *Factory) processing() {
 					delete(f.products, n.Channel)
 					f.mu.Unlock()
 					psc.Unsubscribe(pool.productName)
+					fmt.Println("end ***")
 					break
 				default:
+					fmt.Println("end ***+++", n)
 					break
 				}
 			}
