@@ -16,7 +16,7 @@ func main() {
 	mass.StartFactory("127.0.0.1:6379", 2, 10, 10000)
 
 	var wg sync.WaitGroup
-	for i := 0; i < 2000; i++ {
+	for i := 0; i < 200; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -42,6 +42,8 @@ func main() {
 		//time.Sleep(time.Nanosecond * time.Duration(rand.Intn(1000)))
 	}
 	wg.Wait()
+	fmt.Println("All done")
+	time.Sleep(time.Second * 3)
 }
 
 func howToCook(args ...interface{}) interface{} {

@@ -58,7 +58,7 @@ func StartFactory(redisHost string, redisDB int, redisMaxIdle int, redisMaxActiv
 	factory = &Factory{
 		products:       make(map[string]Product),
 		processingPool: make(chan ProcessingPool, 10),
-		maxPool:        100,
+		maxPool:        50,
 		importPool:     rp,
 	}
 
@@ -81,15 +81,29 @@ func (f *Factory) processing() {
 			//psc.Close()
 			pd := pool.method(pool.materials...)
 			fmt.Println("^^^", pd)
-			pubcli := f.importPool.Get()
-			f.importPool.Get().Do("PUBLISH", pool.productName, pd)
-			pubcli.Close()
+			f.Export(pool.productName, pd)
 			f.mu.Lock()
 			for i := 0; i < len(f.products[pool.productName].forklifts); i++ {
 				f.products[pool.productName].forklifts[i] <- pd
 			}
 			delete(f.products, pool.productName)
 			f.mu.Unlock()
+		} else {
+			for {
+				switch n := psc.Receive().(type) {
+				case redis.Message:
+					f.mu.Lock()
+					for i := 0; i < len(f.products[n.Channel].forklifts); i++ {
+						f.products[n.Channel].forklifts[i] <- string(n.Data)
+					}
+					delete(f.products, n.Channel)
+					f.mu.Unlock()
+					psc.Unsubscribe(pool.productName)
+					break
+				default:
+					break
+				}
+			}
 		}
 
 		err = Unlock(rc, pool.productName, pool.productName)
@@ -104,25 +118,15 @@ func (f *Factory) Import(channel interface{}) redis.PubSubConn {
 	psc := redis.PubSubConn{Conn: rc}
 
 	psc.Subscribe(channel)
-	go func() {
-		for {
-			switch n := psc.Receive().(type) {
-			case redis.Message:
-				f.mu.Lock()
-				for i := 0; i < len(f.products[n.Channel].forklifts); i++ {
-					f.products[n.Channel].forklifts[i] <- string(n.Data)
-				}
-				delete(f.products, n.Channel)
-				f.mu.Unlock()
-				psc.Unsubscribe(channel)
-				return
-			default:
-				return
-			}
-		}
-	}()
 
 	return psc
+}
+
+func (f *Factory) Export(channel interface{}, msg interface{}) {
+	rc := f.importPool.Get()
+	defer rc.Close()
+
+	rc.Do("PUBLISH", channel, msg)
 }
 
 func (f *Factory) start() {
