@@ -15,7 +15,7 @@ func main() {
 	mass.StartFactory("127.0.0.1:6379", 2, 100, 10000)
 
 	var wg sync.WaitGroup
-	for i := 0; i < 30000; i++ {
+	for i := 0; i < 100000; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -28,12 +28,12 @@ func main() {
 			p := mass.NewProduct(strconv.Itoa(i), howToCook, i)
 			fmt.Println(p.Get())
 		}(i)
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			p := mass.NewProduct(strconv.Itoa(i), howToCook, i)
-			fmt.Println(p.Get())
-		}(i)
+		// wg.Add(1)
+		// go func(i int) {
+		// 	defer wg.Done()
+		// 	p := mass.NewProduct(strconv.Itoa(i), howToCook, i)
+		// 	fmt.Println(p.Get())
+		// }(i)
 		//rand.Seed(time.Now().UnixNano())
 		//time.Sleep(time.Nanosecond * time.Duration(rand.Intn(1000)))
 	}
@@ -47,8 +47,8 @@ func howToCook(args ...interface{}) interface{} {
 	for _, a := range args {
 		res += fmt.Sprintf("%v", a)
 	}
-	// time.Sleep(time.Second * 5)
-	return res + "qianlnk" + newRandomString(5)
+	// time.Sleep(time.Second * 1)
+	return res + "qianlnk" + newRandomString(10)
 }
 
 func newRandomString(length int) string {

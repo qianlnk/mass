@@ -1,10 +1,9 @@
 package mass
 
 import (
+	"fmt"
 	"sync"
 	"time"
-
-	"fmt"
 
 	"runtime"
 
@@ -33,6 +32,7 @@ type Factory struct {
 	processingPool chan ProcessingPool
 	maxActive      int
 	importPool     *redis.Pool
+	limiter        *Limiter
 }
 
 var (
@@ -54,16 +54,17 @@ func StartFactory(redisHost string, redisDB int, redisMaxIdle int, redisMaxActiv
 
 		MaxIdle:     redisMaxIdle,
 		MaxActive:   redisMaxActive,
-		IdleTimeout: time.Second * 1,
+		IdleTimeout: time.Second * 180,
 	}
 
 	cpu := runtime.NumCPU()
-	//runtime.GOMAXPROCS(cpu / 2)
+	runtime.GOMAXPROCS(cpu)
 	factory = &Factory{
 		products:       make(map[string]Product),
 		processingPool: make(chan ProcessingPool),
 		maxActive:      cpu,
 		importPool:     rp,
+		limiter:        NewLimiter(20000),
 	}
 
 	factory.start()
@@ -115,14 +116,14 @@ func (f *Factory) LockImporter(product string, secret string, ttl uint64) (bool,
 	rc := f.importPool.Get()
 	defer rc.Close()
 
-	return Lock(rc, product, secret, ttl)
+	return Lock(rc, "mass_lock_key:"+product, secret, ttl)
 }
 
 func (f *Factory) UnlockImporter(product string, secret string) error {
 	rc := f.importPool.Get()
 	defer rc.Close()
 
-	return Unlock(rc, product, secret)
+	return Unlock(rc, "mass_lock_key:"+product, secret)
 }
 
 func (f *Factory) Import(channel interface{}) redis.PubSubConn {
@@ -148,6 +149,7 @@ func (f *Factory) start() {
 }
 
 func NewProduct(name string, method ProcessingMethod, materials ...interface{}) Forklift {
+	factory.limiter.Limit()
 	factory.mu.Lock()
 	fl := make(Forklift)
 	_, ok := factory.products[name]
