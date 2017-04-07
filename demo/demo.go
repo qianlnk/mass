@@ -5,37 +5,33 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
-	"time"
-
 	"sync"
+	"time"
 
 	"github.com/qianlnk/mass"
 )
 
 func main() {
-	mass.StartFactory("127.0.0.1:6379", 2, 10, 10000)
+	mass.StartFactory("127.0.0.1:6379", 2, 100, 10000)
 
 	var wg sync.WaitGroup
-	for i := 0; i < 200; i++ {
+	for i := 0; i < 30000; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
 			p := mass.NewProduct(strconv.Itoa(i), howToCook, i)
-			fmt.Println("----")
 			fmt.Println(p.Get())
 		}(i)
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
 			p := mass.NewProduct(strconv.Itoa(i), howToCook, i)
-			fmt.Println("----")
 			fmt.Println(p.Get())
 		}(i)
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
 			p := mass.NewProduct(strconv.Itoa(i), howToCook, i)
-			fmt.Println("----")
 			fmt.Println(p.Get())
 		}(i)
 		//rand.Seed(time.Now().UnixNano())
@@ -51,7 +47,7 @@ func howToCook(args ...interface{}) interface{} {
 	for _, a := range args {
 		res += fmt.Sprintf("%v", a)
 	}
-	time.Sleep(time.Second * 1)
+	// time.Sleep(time.Second * 5)
 	return res + "qianlnk" + newRandomString(5)
 }
 

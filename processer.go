@@ -6,6 +6,8 @@ import (
 
 	"fmt"
 
+	"runtime"
+
 	"github.com/garyburd/redigo/redis"
 )
 
@@ -29,7 +31,7 @@ type Factory struct {
 	mu             sync.Mutex
 	products       map[string]Product
 	processingPool chan ProcessingPool
-	maxPool        int
+	maxActive      int
 	importPool     *redis.Pool
 }
 
@@ -55,10 +57,12 @@ func StartFactory(redisHost string, redisDB int, redisMaxIdle int, redisMaxActiv
 		IdleTimeout: time.Second * 1,
 	}
 
+	cpu := runtime.NumCPU()
+	//runtime.GOMAXPROCS(cpu / 2)
 	factory = &Factory{
 		products:       make(map[string]Product),
 		processingPool: make(chan ProcessingPool),
-		maxPool:        50,
+		maxActive:      cpu,
 		importPool:     rp,
 	}
 
@@ -67,54 +71,58 @@ func StartFactory(redisHost string, redisDB int, redisMaxIdle int, redisMaxActiv
 
 func (f *Factory) processing() {
 	for pool := range f.processingPool {
-		fmt.Println("###")
 		psc := f.Import(pool.productName)
-		rc := f.importPool.Get()
-		l, err := Lock(rc, pool.productName, pool.productName, 30)
-
-		if err != nil {
-			fmt.Println(err)
-		}
-		fmt.Println("===", l, err)
-		if l {
-			psc.Unsubscribe(pool.productName)
-			psc.Receive()
-			//psc.Close()
-			pd := pool.method(pool.materials...)
-			fmt.Println("^^^", pd)
-			f.Export(pool.productName, pd)
-			f.mu.Lock()
-			for i := 0; i < len(f.products[pool.productName].forklifts); i++ {
-				f.products[pool.productName].forklifts[i] <- pd
-			}
-			delete(f.products, pool.productName)
-			f.mu.Unlock()
-			fmt.Println("end ***")
-		} else {
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 			for {
 				switch n := psc.Receive().(type) {
 				case redis.Message:
+					psc.Unsubscribe(pool.productName)
 					f.mu.Lock()
 					for i := 0; i < len(f.products[n.Channel].forklifts); i++ {
 						f.products[n.Channel].forklifts[i] <- string(n.Data)
 					}
 					delete(f.products, n.Channel)
 					f.mu.Unlock()
-					psc.Unsubscribe(pool.productName)
-					fmt.Println("end ***")
-					break
-				default:
-					fmt.Println("end ***+++", n)
-					break
+				case redis.Subscription:
+					if n.Kind == "unsubscribe" {
+						return
+					}
 				}
 			}
+		}()
+
+		l, err := f.LockImporter(pool.productName, pool.productName, 30)
+		if err != nil {
+			fmt.Println(err)
 		}
 
-		err = Unlock(rc, pool.productName, pool.productName)
-		rc.Close()
+		if l {
+			pd := pool.method(pool.materials...)
+			f.UnlockImporter(pool.productName, pool.productName) //先解锁再发布，防止一些订阅了确收不到消息
+
+			f.Export(pool.productName, pd)
+		}
+
+		wg.Wait()
 		psc.Conn.Close()
-		fmt.Println("@@@", err)
 	}
+}
+
+func (f *Factory) LockImporter(product string, secret string, ttl uint64) (bool, error) {
+	rc := f.importPool.Get()
+	defer rc.Close()
+
+	return Lock(rc, product, secret, ttl)
+}
+
+func (f *Factory) UnlockImporter(product string, secret string) error {
+	rc := f.importPool.Get()
+	defer rc.Close()
+
+	return Unlock(rc, product, secret)
 }
 
 func (f *Factory) Import(channel interface{}) redis.PubSubConn {
@@ -134,7 +142,7 @@ func (f *Factory) Export(channel interface{}, msg interface{}) {
 }
 
 func (f *Factory) start() {
-	for i := 0; i < f.maxPool; i++ {
+	for i := 0; i < f.maxActive; i++ {
 		go f.processing()
 	}
 }
@@ -145,6 +153,7 @@ func NewProduct(name string, method ProcessingMethod, materials ...interface{}) 
 	_, ok := factory.products[name]
 	fls := factory.products[name].forklifts
 	fls = append(fls, fl)
+	//delete(factory.products, name)
 	factory.products[name] = Product{
 		name:      name,
 		forklifts: fls,
@@ -152,13 +161,11 @@ func NewProduct(name string, method ProcessingMethod, materials ...interface{}) 
 	factory.mu.Unlock()
 
 	if !ok {
-		fmt.Println("$$$")
 		factory.processingPool <- ProcessingPool{
 			productName: name,
 			method:      method,
 			materials:   materials,
 		}
-		fmt.Println("&&&")
 	}
 
 	return fl
