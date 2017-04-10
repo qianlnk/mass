@@ -1,13 +1,17 @@
 package mass
 
 import (
-	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
-	"runtime"
+	"fmt"
 
 	"github.com/garyburd/redigo/redis"
+)
+
+const (
+	DEFAULT_LIMIT = 20000
 )
 
 //ProcessingMethod the processing method
@@ -58,13 +62,13 @@ func StartFactory(redisHost string, redisDB int, redisMaxIdle int, redisMaxActiv
 	}
 
 	cpu := runtime.NumCPU()
-	runtime.GOMAXPROCS(cpu)
+	//runtime.GOMAXPROCS(cpu / 3)
 	factory = &Factory{
 		products:       make(map[string]Product),
 		processingPool: make(chan ProcessingPool),
 		maxActive:      cpu,
 		importPool:     rp,
-		limiter:        NewLimiter(20000),
+		limiter:        NewLimiter(DEFAULT_LIMIT),
 	}
 
 	factory.start()
@@ -72,6 +76,7 @@ func StartFactory(redisHost string, redisDB int, redisMaxIdle int, redisMaxActiv
 
 func (f *Factory) processing() {
 	for pool := range f.processingPool {
+		done := make(chan bool)
 		psc := f.Import(pool.productName)
 		var wg sync.WaitGroup
 		wg.Add(1)
@@ -87,29 +92,53 @@ func (f *Factory) processing() {
 					}
 					delete(f.products, n.Channel)
 					f.mu.Unlock()
+					done <- true
 				case redis.Subscription:
 					if n.Kind == "unsubscribe" {
 						return
 					}
+				default:
 				}
 			}
 		}()
 
-		l, err := f.LockImporter(pool.productName, pool.productName, 30)
-		if err != nil {
-			fmt.Println(err)
-		}
+		f.Production(pool)
+		for {
+			ok := false
+			select {
+			case <-done:
+				ok = true
+			case <-time.After(time.Second * 3):
+				fmt.Println("timeout")
+				f.Production(pool)
+				ok = false
+			}
 
-		if l {
-			pd := pool.method(pool.materials...)
-			f.UnlockImporter(pool.productName, pool.productName) //先解锁再发布，防止一些订阅了确收不到消息
+			if ok {
+				break
+			}
 
-			f.Export(pool.productName, pd)
 		}
 
 		wg.Wait()
+		close(done)
 		psc.Conn.Close()
 	}
+}
+func (f *Factory) Production(pool ProcessingPool) error {
+	l, err := f.LockImporter(pool.productName, pool.productName, 30)
+	if err != nil {
+		return err
+	}
+
+	if l {
+		pd := pool.method(pool.materials...)
+		f.Export(pool.productName, pd)
+
+		f.UnlockImporter(pool.productName, pool.productName)
+	}
+
+	return nil
 }
 
 func (f *Factory) LockImporter(product string, secret string, ttl uint64) (bool, error) {
@@ -152,6 +181,7 @@ func NewProduct(name string, method ProcessingMethod, materials ...interface{}) 
 	factory.limiter.Limit()
 	factory.mu.Lock()
 	fl := make(Forklift)
+	fmt.Println(len(factory.products))
 	_, ok := factory.products[name]
 	fls := factory.products[name].forklifts
 	fls = append(fls, fl)
