@@ -17,13 +17,12 @@ const (
 //ProcessingMethod the processing method
 type ProcessingMethod func(materials ...interface{}) interface{}
 
-type Forklift chan []byte
+type Forklift chan interface{}
 
 type ProcessingPool struct {
 	productName string
 	method      ProcessingMethod
 	materials   []interface{}
-	forklift    Forklift
 }
 
 type Product struct {
@@ -32,6 +31,7 @@ type Product struct {
 }
 
 type Factory struct {
+	mu             sync.Mutex
 	products       map[string]Product
 	processingPool chan ProcessingPool
 	maxActive      int
@@ -77,7 +77,10 @@ func StartFactory(redisHost string, redisDB int, redisMaxIdle int, redisMaxActiv
 func (f *Factory) processing() {
 	for pool := range f.processingPool {
 		done := make(chan bool)
-		psc := f.Import(pool.productName)
+		psc, err := f.Import(pool.productName)
+		if err != nil {
+			fmt.Println("---err", err)
+		}
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
@@ -86,9 +89,13 @@ func (f *Factory) processing() {
 				switch n := psc.Receive().(type) {
 				case redis.Message:
 					psc.Unsubscribe(pool.productName)
-					pool.forklift <- n.Data
+					f.mu.Lock()
+					for i := 0; i < len(f.products[n.Channel].forklifts); i++ {
+						f.products[n.Channel].forklifts[i] <- string(n.Data)
+					}
+					delete(f.products, n.Channel)
+					f.mu.Unlock()
 					done <- true
-					return
 				case redis.Subscription:
 					if n.Kind == "unsubscribe" {
 						return
@@ -151,20 +158,21 @@ func (f *Factory) UnlockImporter(product string, secret string) error {
 	return Unlock(rc, "mass_lock_key:"+product, secret)
 }
 
-func (f *Factory) Import(channel interface{}) redis.PubSubConn {
+func (f *Factory) Import(channel interface{}) (redis.PubSubConn, error) {
 	rc := f.importPool.Get()
 	psc := redis.PubSubConn{Conn: rc}
 
-	psc.Subscribe(channel)
+	err := psc.Subscribe(channel)
 
-	return psc
+	return psc, err
 }
 
-func (f *Factory) Export(channel interface{}, msg interface{}) {
+func (f *Factory) Export(channel interface{}, msg interface{}) error {
 	rc := f.importPool.Get()
 	defer rc.Close()
 
-	rc.Do("PUBLISH", channel, msg)
+	_, err := rc.Do("PUBLISH", channel, msg)
+	return err
 }
 
 func (f *Factory) start() {
@@ -175,13 +183,25 @@ func (f *Factory) start() {
 
 func NewProduct(name string, method ProcessingMethod, materials ...interface{}) Forklift {
 	factory.limiter.Limit()
+	factory.mu.Lock()
 	fl := make(Forklift)
+	fmt.Println(len(factory.products))
+	_, ok := factory.products[name]
+	fls := factory.products[name].forklifts
+	fls = append(fls, fl)
+	//delete(factory.products, name)
+	factory.products[name] = Product{
+		name:      name,
+		forklifts: fls,
+	}
+	factory.mu.Unlock()
 
-	factory.processingPool <- ProcessingPool{
-		productName: name,
-		method:      method,
-		materials:   materials,
-		forklift:    fl,
+	if !ok {
+		factory.processingPool <- ProcessingPool{
+			productName: name,
+			method:      method,
+			materials:   materials,
+		}
 	}
 
 	return fl
@@ -190,5 +210,5 @@ func NewProduct(name string, method ProcessingMethod, materials ...interface{}) 
 func (f Forklift) Get() interface{} {
 	defer close(f)
 
-	return string(<-f)
+	return <-f
 }
