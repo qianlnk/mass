@@ -32,7 +32,8 @@ type Product struct {
 }
 
 type Factory struct {
-	products       map[string]Product
+	// mu             sync.Mutex
+	// products       map[string][]Forklift
 	processingPool chan ProcessingPool
 	maxActive      int
 	importPool     *redis.Pool
@@ -64,7 +65,6 @@ func StartFactory(redisHost string, redisDB int, redisMaxIdle int, redisMaxActiv
 	cpu := runtime.NumCPU()
 	runtime.GOMAXPROCS(cpu)
 	factory = &Factory{
-		products:       make(map[string]Product),
 		processingPool: make(chan ProcessingPool),
 		maxActive:      100,
 		importPool:     rp,

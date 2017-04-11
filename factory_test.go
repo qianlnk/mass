@@ -46,3 +46,10 @@ func newRandomString(length int) string {
 	}
 	return strings.Join(rs, "")
 }
+
+func TestDelEmptyMap(t *testing.T) {
+	m := make(map[string]int)
+	m["test"] = 1
+	delete(m, "test")
+	m["test"] = 2
+}

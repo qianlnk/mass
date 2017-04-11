@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/qianlnk/mass"
-	"github.com/qianlnk/redis"
+	"github.com/qianlnk/redikey"
 )
 
 func main() {
@@ -52,10 +52,10 @@ func howToProcessing(args ...interface{}) interface{} {
 
 	key += prefix
 
-	err := redis.Get(key, &res)
+	err := redikey.Get(key, &res)
 	if err != nil {
 		res = prefix + "qianlnk" + newRandomString(5)
-		err = redis.Set(key, res, time.Second*120)
+		err = redikey.Set(key, res, time.Second*120)
 		if err != nil {
 			fmt.Println(err)
 		}
