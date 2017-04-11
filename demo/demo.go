@@ -30,13 +30,13 @@ func main() {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			p := mass.NewProduct(strconv.Itoa(i), howToProcessing, i)
+			p := mass.NewProduct(strconv.Itoa(i), howToProcessing, 1, i)
 			fmt.Println(p.Get())
 		}(i)
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			p := mass.NewProduct(strconv.Itoa(i), howToProcessing, i)
+			p := mass.NewProduct(strconv.Itoa(i), howToProcessing, 1, i)
 			fmt.Println(p.Get())
 		}(i)
 		// wg.Add(1)

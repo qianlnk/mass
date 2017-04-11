@@ -5,8 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"fmt"
-
 	"github.com/garyburd/redigo/redis"
 )
 
@@ -20,10 +18,11 @@ type ProcessingMethod func(materials ...interface{}) interface{}
 type Forklift chan []byte
 
 type ProcessingPool struct {
-	productName string
-	method      ProcessingMethod
-	materials   []interface{}
-	forklift    Forklift
+	productName   string
+	method        ProcessingMethod
+	materials     []interface{}
+	methodTimeout int
+	forklift      Forklift
 }
 
 type Product struct {
@@ -104,8 +103,8 @@ func (f *Factory) processing() {
 			select {
 			case <-done:
 				ok = true
-			case <-time.After(time.Second * 3):
-				fmt.Println("timeout")
+			case <-time.After(time.Second * time.Duration(pool.methodTimeout)):
+				//fmt.Println("timeout", pool.productName)
 				f.Production(pool)
 				ok = false
 			}
@@ -173,15 +172,16 @@ func (f *Factory) start() {
 	}
 }
 
-func NewProduct(name string, method ProcessingMethod, materials ...interface{}) Forklift {
+func NewProduct(name string, method ProcessingMethod, timeout int, materials ...interface{}) Forklift {
 	factory.limiter.Limit()
 	fl := make(Forklift)
 
 	factory.processingPool <- ProcessingPool{
-		productName: name,
-		method:      method,
-		materials:   materials,
-		forklift:    fl,
+		productName:   name,
+		method:        method,
+		methodTimeout: timeout,
+		materials:     materials,
+		forklift:      fl,
 	}
 
 	return fl
