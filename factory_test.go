@@ -13,20 +13,23 @@ func TestNewProduct(t *testing.T) {
 	StartFactory("127.0.0.1:6379", 2, 10, 100)
 
 	go func() {
-		p := NewProduct("1001", howToCook, "1001", "1001")
-		fmt.Printf("----")
-		fmt.Println(p.Get())
+		p := NewProduct("1001", howToCook, 1, "1001", "1001")
+		var res string
+		p.Get(&res)
+		fmt.Println(res)
 	}()
 
 	go func() {
-		p := NewProduct("1001002", howToCook, "1001002", "1001002")
-		fmt.Printf("----")
-		fmt.Println(p.Get())
+		p := NewProduct("1002", howToCook, 1, "1002", "1002")
+		var res string
+		p.Get(&res)
+		fmt.Println(res)
 	}()
 
-	p := NewProduct("1001", howToCook, "1001", "1001")
-	fmt.Printf("----")
-	fmt.Println(p.Get())
+	p := NewProduct("1003", howToCook, 1, "1003", "1003")
+	var res string
+	p.Get(&res)
+	fmt.Println(res)
 }
 
 func howToCook(args ...interface{}) interface{} {
@@ -45,11 +48,4 @@ func newRandomString(length int) string {
 		rs = append(rs, strconv.Itoa(rand.Intn(10)))
 	}
 	return strings.Join(rs, "")
-}
-
-func TestDelEmptyMap(t *testing.T) {
-	m := make(map[string]int)
-	m["test"] = 1
-	delete(m, "test")
-	m["test"] = 2
 }
