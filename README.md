@@ -20,4 +20,23 @@ type ProcessingMethod func(materials ...interface{}) interface{}
 
 ## Usage
 
-see demo
+set redis
+
+```golang
+mass.StartFactory("127.0.0.1:6379", 2, 100, 1000)
+```
+
+create an new process, params is product name, method, timeout, args...
+
+```golang
+p := mass.NewProduct(strconv.Itoa(i), howToProcessing, 1, i)
+```
+
+and, get result
+
+```golang
+var test testRes
+p.Get(&test)
+```
+
+see demo for more info.
