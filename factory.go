@@ -163,7 +163,8 @@ func (f *Factory) Export(channel interface{}, msg interface{}) {
 	rc := f.importPool.Get()
 	defer rc.Close()
 
-	rc.Do("PUBLISH", channel, msg)
+	data, _ := Marshal(msg)
+	rc.Do("PUBLISH", channel, data)
 }
 
 func (f *Factory) start() {
@@ -187,8 +188,10 @@ func NewProduct(name string, method ProcessingMethod, timeout int, materials ...
 	return fl
 }
 
-func (f Forklift) Get() interface{} {
+func (f Forklift) Get(v interface{}) {
 	defer close(f)
 
-	return string(<-f)
+	data := <-f
+
+	Unmarshal(data, v)
 }

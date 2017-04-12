@@ -26,19 +26,21 @@ func main() {
 
 	mass.StartFactory("127.0.0.1:6379", 2, 100, 1000)
 	var wg sync.WaitGroup
-	for i := 0; i < 100000; i++ {
+	for i := 0; i < 200000; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
 			p := mass.NewProduct(strconv.Itoa(i), howToProcessing, 1, i)
-			fmt.Println(p.Get())
+			var test TestRes
+			p.Get(&test)
+			fmt.Println(test.ID, test.Name)
 		}(i)
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			p := mass.NewProduct(strconv.Itoa(i), howToProcessing, 1, i)
-			fmt.Println(p.Get())
-		}(i)
+		// wg.Add(1)
+		// go func(i int) {
+		// 	defer wg.Done()
+		// 	p := mass.NewProduct(strconv.Itoa(i), howToProcessing, 1, i)
+		// 	fmt.Println(p.Get())
+		// }(i)
 		// wg.Add(1)
 		// go func(i int) {
 		// 	defer wg.Done()
@@ -54,9 +56,14 @@ func main() {
 	time.Sleep(time.Second * 3)
 }
 
+type TestRes struct {
+	ID   string //`json:"id"`
+	Name string //`json:"name"`
+}
+
 func howToProcessing(args ...interface{}) interface{} {
 	var res, key, prefix string
-
+	var test TestRes
 	key = "mass_key:"
 	for _, a := range args {
 		prefix += fmt.Sprintf("%v", a)
@@ -73,8 +80,10 @@ func howToProcessing(args ...interface{}) interface{} {
 		}
 	}
 
+	test.ID = res
+	test.Name = prefix
 	//time.Sleep(time.Second * 1)
-	return res
+	return test
 }
 
 func newRandomString(length int) string {
