@@ -18,9 +18,40 @@
 type ProcessingMethod func(materials ...interface{}) interface{}
 ```
 
+## How to use limit
+
+```golang
+func TestLimiter(t *testing.T) {
+    l := NewLimiter(3)
+
+    for {
+        l.Limit()
+        fmt.Println("hello qianlnk")
+    }
+}
+```
+
+## How to use lock
+
+```golang
+rc := pool.Get()
+ok, err := Lock(rc, "testkey", "testsecret", 20)
+if ok {
+    //do sth with lock
+}else {
+    //get lock failed
+}
+
+Unlock(rc, "testkey", "testsecret")
+```
+
 ## Usage
 
 set redis
+
+```golang
+func StartFactory(redisHost string, redisDB int, redisMaxIdle int, redisMaxActive int){}
+```
 
 ```golang
 mass.StartFactory("127.0.0.1:6379", 2, 100, 1000)
@@ -29,10 +60,18 @@ mass.StartFactory("127.0.0.1:6379", 2, 100, 1000)
 create an new process, params is product name, method, timeout, args...
 
 ```golang
+func NewProduct(name string, method ProcessingMethod, timeout int, materials ...interface{}) Forklift {}
+```
+
+```golang
 p := mass.NewProduct(strconv.Itoa(i), howToProcessing, 1, i)
 ```
 
 and, get result
+
+```golang
+func (f Forklift) Get(v interface{}) {}
+```
 
 ```golang
 var test testRes
